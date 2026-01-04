@@ -101,8 +101,8 @@ with(person) {
 }
 
 // takeIf/takeUnless - conditional return
-val adult = person.takeIf { it.age >= 18 }
-val minor = person.takeUnless { it.age >= 18 }
+val adult = person.takeIf { it.age >= 18 }  // returns object if TRUE else null
+val minor = person.takeUnless { it.age >= 18 } // returns object if FALSE else null
 ```
 
 ---
@@ -153,7 +153,7 @@ sum(1, 2, 3, 4)  // 10
 ### Classes & Objects
 
 ```kotlin
-// Data class - auto-generates equals, hashCode, toString, copy
+// Data class - auto-generates `equals`, `hashCode`, `toString`, `copy`
 data class User(val name: String, val age: Int)
 
 val user = User("John", 30)

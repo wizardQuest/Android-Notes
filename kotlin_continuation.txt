@@ -1,0 +1,417 @@
+*Basic to Intermediate Level*
+
+### 1. What is the difference between val, var, and const val?
+
+**Answer:**
+
+| Feature | val | var | const val |
+|---------|-----|-----|-----------|
+| Mutability | Read-only reference | Mutable reference | Compile-time constant |
+| Can be reassigned | No | Yes | No |
+| Value computation | Runtime | Runtime | Compile-time |
+| Where declared | Anywhere | Anywhere | Top-level or object only |
+| Type restrictions | Any | Any | Primitives & String only |
+
+```kotlin
+// val - immutable reference (can't reassign)
+val name = "John"
+// name = "Jane"  // ❌ Error
+
+// var - mutable reference
+var age = 25
+age = 26  // ✅ OK
+
+// const val - compile-time constant
+const val MAX_SIZE = 100
+
+// Note: val doesn't make object immutable
+val list = mutableListOf(1, 2, 3)
+list.add(4)  // ✅ OK
+```
+
+---
+
+### 2. Explain Kotlin's null safety features
+
+**Answer:**
+
+Kotlin's type system distinguishes nullable and non-nullable types at compile time.
+
+```kotlin
+// Non-nullable type
+var name: String = "John"
+
+// Nullable type
+var nullableName: String? = "John"
+nullableName = null  // ✅ OK
+
+// Safe call operator
+val length = nullableName?.length
+
+// Elvis operator
+val len = nullableName?.length ?: 0
+
+// Not-null assertion
+val l = nullableName!!.length
+
+// Safe cast
+val str: String? = obj as? String
+```
+
+---
+
+### 3. What is the difference between == and ===?
+
+**Answer:**
+
+```kotlin
+// == (Structural equality) - calls equals()
+val a = "Hello"
+val b = "Hello"
+println(a == b)  // true
+
+// === (Referential equality) - compares references
+val list1 = listOf(1, 2, 3)
+val list2 = listOf(1, 2, 3)
+println(list1 == list2)   // true - same content
+println(list1 === list2)  // false - different objects
+```
+
+**Summary:**
+- `==` → checks value equality
+- `===` → checks reference equality
+
+---
+
+### 4. Explain extension functions vs member functions
+
+**Answer:**
+
+```kotlin
+// Member function - defined inside class
+class Person(val name: String) {
+    fun greet() {
+        println("Hello, I'm $name")
+    }
+}
+
+// Extension function - defined outside class
+fun Person.introduce() {
+    println("My name is $name")
+}
+
+// Key differences:
+// 1. Extensions cannot access private members
+// 2. Extensions are resolved statically
+// 3. Extensions can be defined for final classes
+```
+
+---
+
+### 5. What are data classes? What methods do they generate?
+
+**Answer:**
+
+Data classes automatically generate boilerplate code.
+
+```kotlin
+data class User(val name: String, val age: Int)
+
+// Generated methods:
+// 1. equals() / hashCode()
+val user1 = User("John", 30)
+val user2 = User("John", 30)
+println(user1 == user2)  // true
+
+// 2. toString()
+println(user1)  // User(name=John, age=30)
+
+// 3. copy()
+val user3 = user1.copy(age = 31)
+
+// 4. componentN() for destructuring
+val (name, age) = user1
+```
+
+---
+
+### 6. Explain sealed classes vs enum classes
+
+**Answer:**
+
+**Enum Classes:**
+```kotlin
+enum class Direction {
+    NORTH, SOUTH, EAST, WEST
+}
+// All instances known at compile time
+```
+
+**Sealed Classes:**
+```kotlin
+sealed class Result {
+    data class Success(val data: String) : Result()
+    data class Error(val message: String) : Result()
+    object Loading : Result()
+}
+
+// Exhaustive when expressions
+fun handle(result: Result) = when (result) {
+    is Result.Success -> println(result.data)
+    is Result.Error -> println(result.message)
+    is Result.Loading -> println("Loading...")
+}
+```
+
+---
+
+### 7. What is the difference between object and companion object?
+
+**Answer:**
+
+**Object Declaration (Singleton):**
+```kotlin
+object DatabaseManager {
+    fun connect() { }
+}
+DatabaseManager.connect()
+```
+
+**Companion Object:**
+```kotlin
+class User {
+    companion object {
+        fun create() = User()
+        const val MAX_AGE = 150
+    }
+}
+val user = User.create()
+```
+
+---
+
+### 8. Explain let, also, run, apply, with
+
+**Answer:**
+
+| Function | Context | Return | Use Case |
+|----------|---------|--------|----------|
+| let | it | Lambda result | Null checks |
+| also | it | Object itself | Side effects |
+| run | this | Lambda result | Config + compute |
+| apply | this | Object itself | Initialization |
+| with | this | Lambda result | Group calls |
+
+```kotlin
+// let - null check
+name?.let { println(it) }
+
+// also - logging
+val list = mutableListOf(1, 2, 3)
+    .also { println("Created: $it") }
+
+// apply - configuration
+val person = Person().apply {
+    name = "John"
+    age = 30
+}
+```
+
+---
+
+### 9. What are inline functions? Why use them?
+
+**Answer:**
+
+Inline functions copy function body to call site, eliminating lambda object creation.
+
+```kotlin
+inline fun <T> measureTime(block: () -> T): T {
+    val start = System.currentTimeMillis()
+    val result = block()
+    println("Took: ${System.currentTimeMillis() - start}ms")
+    return result
+}
+
+// Benefits:
+// 1. No lambda object allocation
+// 2. Non-local returns allowed
+// 3. Reified type parameters
+
+inline fun <reified T> isInstance(value: Any) = value is T
+```
+
+---
+
+### 10. Explain lateinit vs lazy
+
+**Answer:**
+
+**lateinit:**
+```kotlin
+// For var properties
+class MyActivity {
+    private lateinit var database: Database
+    
+    override fun onCreate() {
+        database = DatabaseFactory.create()
+    }
+    
+    fun query() {
+        if (::database.isInitialized) {
+            database.query()
+        }
+    }
+}
+```
+
+**lazy:**
+```kotlin
+// For val properties
+class DataProcessor {
+    private val resource: Resource by lazy {
+        Resource()  // Computed only once
+    }
+}
+```
+
+| Feature | lateinit | lazy |
+|---------|----------|------|
+| Property type | var | val |
+| Initialization | Manual | Automatic (first access) |
+| Thread safety | No | Yes (by default) |
+
+---
+
+### 11. What is the difference between List and MutableList?
+
+**Answer:**
+
+```kotlin
+// List - read-only interface
+val readOnlyList: List<Int> = listOf(1, 2, 3)
+// readOnlyList.add(4)  // ❌ No add method
+
+// MutableList - read-write interface
+val mutableList: MutableList<Int> = mutableListOf(1, 2, 3)
+mutableList.add(4)  // ✅ Can modify
+```
+
+**Important:** List is just a read-only view, not truly immutable.
+
+---
+
+### 12. Explain type inference and smart casts
+
+**Answer:**
+
+**Type Inference:**
+```kotlin
+val name = "John"  // Inferred as String
+val age = 30       // Inferred as Int
+fun add(a: Int, b: Int) = a + b  // Return type inferred
+```
+
+**Smart Casts:**
+```kotlin
+fun process(obj: Any) {
+    if (obj is String) {
+        println(obj.length)  // Auto cast to String
+    }
+}
+
+// Works with when
+fun describe(obj: Any) = when (obj) {
+    is Int -> obj + 1
+    is String -> obj.length
+    else -> "Unknown"
+}
+```
+
+---
+
+### 13. What are higher-order functions?
+
+**Answer:**
+
+Higher-order functions take functions as parameters or return functions.
+
+```kotlin
+// Function as parameter
+fun calculate(a: Int, b: Int, op: (Int, Int) -> Int): Int {
+    return op(a, b)
+}
+
+val sum = calculate(5, 3) { x, y -> x + y }  // 8
+
+// Function as return value
+fun getOperation(type: String): (Int, Int) -> Int {
+    return when (type) {
+        "add" -> { a, b -> a + b }
+        "multiply" -> { a, b -> a * b }
+        else -> { a, b -> 0 }
+    }
+}
+```
+
+---
+
+### 14. Explain lambda vs anonymous functions
+
+**Answer:**
+
+```kotlin
+// Lambda
+val lambda = { a: Int, b: Int -> a + b }
+
+// Anonymous function
+val anonymous = fun(a: Int, b: Int): Int {
+    return a + b
+}
+
+// Key difference: return behavior
+fun processNumbers(numbers: List<Int>) {
+    numbers.forEach { num ->
+        if (num < 0) {
+            return  // Returns from processNumbers (non-local)
+        }
+    }
+}
+
+fun processNumbers2(numbers: List<Int>) {
+    numbers.forEach(fun(num) {
+        if (num < 0) {
+            return  // Returns from anonymous function only (local)
+        }
+    })
+}
+```
+
+---
+
+### 15. What is tail recursion?
+
+**Answer:**
+
+Tail recursion optimizes recursive calls to prevent stack overflow.
+
+```kotlin
+// Regular recursion - stack overflow for large n
+fun factorial(n: Int): Long {
+    return if (n <= 1) 1 else n * factorial(n - 1)
+}
+
+// Tail recursive - optimized to loop
+tailrec fun factorial(n: Long, acc: Long = 1): Long {
+    return if (n <= 1) acc 
+    else factorial(n - 1, n * acc)
+}
+
+// Requirements:
+// 1. Recursive call must be last operation
+// 2. Must be member/extension function
+```
+
+---
+
+

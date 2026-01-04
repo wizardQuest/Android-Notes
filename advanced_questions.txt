@@ -1,0 +1,1035 @@
+## Advanced Kotlin Interview Questions
+*Senior to Lead Level*
+
+### 1. Explain variance (invariant, covariant, contravariant) with practical examples
+
+**Answer:**
+
+Variance determines how subtyping between generic types relates to subtyping of their type parameters.
+
+**Invariance (default):**
+```kotlin
+class Box<T>(var item: T)
+
+// Box<Dog> is NOT a subtype of Box<Animal>
+open class Animal
+class Dog : Animal()
+
+val dogBox: Box<Dog> = Box(Dog())
+// val animalBox: Box<Animal> = dogBox  // ❌ Type mismatch
+```
+
+**Covariance (out):**
+```kotlin
+// Producer - only produces T, never consumes
+interface Producer<out T> {
+    fun produce(): T  // T only in "out" position
+    // fun consume(item: T)  // ❌ Would not compile
+}
+
+class AnimalProducer : Producer<Animal> {
+    override fun produce() = Animal()
+}
+
+class DogProducer : Producer<Dog> {
+    override fun produce() = Dog()
+}
+
+// ✅ Works because Producer is covariant
+val dogProducer: Producer<Dog> = DogProducer()
+val animalProducer: Producer<Animal> = dogProducer  // Safe upcasting
+
+// Real-world example: List<T> is covariant
+val dogs: List<Dog> = listOf(Dog(), Dog())
+val animals: List<Animal> = dogs  // ✅ Safe - List is read-only
+```
+
+**Contravariance (in):**
+```kotlin
+// Consumer - only consumes T, never produces
+interface Consumer<in T> {
+    fun consume(item: T)  // T only in "in" position
+    // fun produce(): T  // ❌ Would not compile
+}
+
+class AnimalConsumer : Consumer<Animal> {
+    override fun consume(item: Animal) {
+        println("Consuming animal: ${item.javaClass.simpleName}")
+    }
+}
+
+// ✅ Works because Consumer is contravariant
+val animalConsumer: Consumer<Animal> = AnimalConsumer()
+val dogConsumer: Consumer<Dog> = animalConsumer  // Safe - Animal can consume Dog
+dogConsumer.consume(Dog())  // Works fine
+
+// Real-world example: Comparator<T> is contravariant
+val animalComparator: Comparator<Animal> = Comparator { a1, a2 -> 
+    a1.name.compareTo(a2.name) 
+}
+val dogComparator: Comparator<Dog> = animalComparator  // ✅ Safe
+```
+
+**Mnemonic:**
+- **out** (covariant): Producer - only produces/returns T (T in **out** position)
+- **in** (contravariant): Consumer - only consumes/accepts T (T in **in** position)
+- **No variance** (invariant): Both producer and consumer
+
+---
+
+### 2. What are reified type parameters? Why are they useful?
+
+**Answer:**
+
+Reified type parameters preserve type information at runtime in inline functions.
+
+**Problem without reified:**
+```kotlin
+// Type erased at runtime
+fun <T> isInstanceOf(value: Any): Boolean {
+    // return value is T  // ❌ Cannot check erased type
+    return false
+}
+```
+
+**Solution with reified:**
+```kotlin
+inline fun <reified T> isInstanceOf(value: Any): Boolean {
+    return value is T  // ✅ Type available at runtime
+}
+
+println(isInstanceOf<String>("Hello"))  // true
+println(isInstanceOf<Int>("Hello"))     // false
+```
+
+**Practical Examples:**
+
+```kotlin
+// 1. Generic JSON parsing
+inline fun <reified T> String.parseJson(): T {
+    return Gson().fromJson(this, T::class.java)
+}
+
+val user: User = jsonString.parseJson<User>()
+
+// 2. Type-safe intent extras
+inline fun <reified T : Activity> Context.startActivity() {
+    startActivity(Intent(this, T::class.java))
+}
+
+context.startActivity<MainActivity>()
+
+// 3. Type-safe casting
+inline fun <reified T> Any.safeCast(): T? {
+    return this as? T
+}
+
+val str: String? = obj.safeCast<String>()
+
+// 4. Filter by type
+inline fun <reified T> List<Any>.filterIsInstance(): List<T> {
+    return filter { it is T }.map { it as T }
+}
+
+val mixed: List<Any> = listOf(1, "hello", 2, "world")
+val strings = mixed.filterIsInstance<String>()  // ["hello", "world"]
+
+// 5. ViewModel factory
+inline fun <reified VM : ViewModel> Fragment.viewModels(): Lazy<VM> {
+    return lazy {
+        ViewModelProvider(this)[VM::class.java]
+    }
+}
+
+val viewModel: MyViewModel by viewModels()
+```
+
+**Requirements:**
+- Function must be `inline`
+- Type parameter marked with `reified`
+- Cannot be used on classes or non-inline functions
+
+---
+
+### 3. Explain contracts in Kotlin - what problems do they solve?
+
+**Answer:**
+
+Contracts help the compiler understand function behavior for better smart casts and flow analysis.
+
+**Problem without contracts:**
+```kotlin
+fun String?.isValid(): Boolean {
+    return this != null && this.isNotEmpty()
+}
+
+fun process(input: String?) {
+    if (input.isValid()) {
+        // println(input.length)  // ❌ Smart cast not possible
+    }
+}
+```
+
+**Solution with contracts:**
+```kotlin
+import kotlin.contracts.*
+
+fun String?.isValid(): Boolean {
+    contract {
+        returns(true) implies (this@isValid != null)
+    }
+    return this != null && this.isNotEmpty()
+}
+
+fun processWithContract(input: String?) {
+    if (input.isValid()) {
+        println(input.length)  // ✅ Smart cast works!
+    }
+}
+```
+
+**Contract Types:**
+
+```kotlin
+// 1. Returns implies
+fun requireNotNull(value: Any?) {
+    contract {
+        returns() implies (value != null)
+    }
+    if (value == null) throw IllegalArgumentException()
+}
+
+// 2. Returns value
+fun Boolean.isTrueAndNotNull(): Boolean {
+    contract {
+        returns(true) implies (this@isTrueAndNotNull)
+    }
+    return this == true
+}
+
+// 3. CallsInPlace
+fun runOnce(block: () -> Unit) {
+    contract {
+        callsInPlace(block, InvocationKind.EXACTLY_ONCE)
+    }
+    block()
+}
+
+fun initializeValue() {
+    val value: Int
+    runOnce {
+        value = 42  // ✅ Compiler knows block called exactly once
+    }
+    println(value)  // ✅ value is definitely initialized
+}
+
+// InvocationKind options:
+// - EXACTLY_ONCE: Called exactly once
+// - AT_MOST_ONCE: Called 0 or 1 times
+// - AT_LEAST_ONCE: Called 1 or more times
+// - UNKNOWN: May be called any number of times
+```
+
+**Built-in functions with contracts:**
+- `require()`, `check()`, `assert()`
+- `requireNotNull()`, `checkNotNull()`
+- `let`, `also`, `run`, `apply`, `with`
+
+**Limitations:**
+- Only in top-level functions or member functions
+- Must be first statement in function
+- Cannot have complex logic
+- Currently experimental/restricted feature
+
+---
+
+### 4. How would you build a type-safe DSL in Kotlin?
+
+**Answer:**
+
+Type-safe DSLs use lambda with receivers, scope control, and builder patterns.
+
+**Example: SQL Query DSL**
+
+```kotlin
+// DSL Definition
+class Query {
+    private val fields = mutableListOf<String>()
+    private var tableName: String = ""
+    private val conditions = mutableListOf<String>()
+    
+    fun select(vararg columns: String) {
+        fields.addAll(columns)
+    }
+    
+    fun from(table: String) {
+        tableName = table
+    }
+    
+    fun where(condition: String) {
+        conditions.add(condition)
+    }
+    
+    fun build(): String {
+        val select = if (fields.isEmpty()) "*" else fields.joinToString(", ")
+        val where = if (conditions.isEmpty()) "" 
+                    else " WHERE " + conditions.joinToString(" AND ")
+        return "SELECT $select FROM $tableName$where"
+    }
+}
+
+fun query(init: Query.() -> Unit): String {
+    val query = Query()
+    query.init()
+    return query.build()
+}
+
+// Usage
+val sql = query {
+    select("name", "age")
+    from("users")
+    where("age > 18")
+    where("status = 'active'")
+}
+// Result: SELECT name, age FROM users WHERE age > 18 AND status = 'active'
+```
+
+**Advanced Example: HTML DSL**
+
+```kotlin
+@DslMarker
+annotation class HtmlTagMarker
+
+@HtmlTagMarker
+abstract class Tag(val name: String) {
+    private val children = mutableListOf<Tag>()
+    private val attributes = mutableMapOf<String, String>()
+    
+    protected fun <T : Tag> initTag(tag: T, init: T.() -> Unit): T {
+        tag.init()
+        children.add(tag)
+        return tag
+    }
+    
+    operator fun String.unaryPlus() {
+        children.add(TextTag(this))
+    }
+    
+    fun attribute(name: String, value: String) {
+        attributes[name] = value
+    }
+    
+    override fun toString(): String {
+        val attrs = attributes.entries.joinToString("") { """ ${it.key}="${it.value}"""" }
+        val content = children.joinToString("")
+        return "<$name$attrs>$content</$name>"
+    }
+}
+
+class HTML : Tag("html") {
+    fun head(init: Head.() -> Unit) = initTag(Head(), init)
+    fun body(init: Body.() -> Unit) = initTag(Body(), init)
+}
+
+class Head : Tag("head") {
+    fun title(init: Title.() -> Unit) = initTag(Title(), init)
+}
+
+class Title : Tag("title")
+
+class Body : Tag("body") {
+    fun h1(init: H1.() -> Unit) = initTag(H1(), init)
+    fun p(init: P.() -> Unit) = initTag(P(), init)
+    fun div(init: Div.() -> Unit) = initTag(Div(), init)
+}
+
+class H1 : Tag("h1")
+class P : Tag("p")
+class Div : Tag("div")
+
+class TextTag(val text: String) : Tag("") {
+    override fun toString() = text
+}
+
+fun html(init: HTML.() -> Unit): HTML {
+    val html = HTML()
+    html.init()
+    return html
+}
+
+// Usage
+val page = html {
+    head {
+        title {
+            +"My Website"
+        }
+    }
+    body {
+        h1 {
+            +"Welcome"
+            attribute("class", "header")
+        }
+        div {
+            p {
+                +"First paragraph"
+            }
+            p {
+                +"Second paragraph"
+            }
+        }
+    }
+}
+```
+
+**Key Techniques:**
+1. **Lambda with receiver** - `init: Type.() -> Unit`
+2. **@DslMarker** - prevents implicit receiver mixing
+3. **Extension functions** - adds DSL operations
+4. **Operator overloading** - `unaryPlus` for string content
+5. **Scope control** - type-safe nesting
+
+---
+
+### 5. Explain the difference between suspend and blocking functions
+
+**Answer:**
+
+**Blocking Function:**
+```kotlin
+// Blocks the thread - thread cannot do other work
+fun blockingDownload(): String {
+    Thread.sleep(1000)  // Thread is blocked
+    return "Data"
+}
+
+// On main thread - UI freezes
+blockingDownload()  // ❌ ANR risk
+```
+
+**Suspend Function:**
+```kotlin
+// Suspends coroutine - thread is free for other work
+suspend fun suspendingDownload(): String {
+    delay(1000)  // Coroutine suspended, thread is free
+    return "Data"
+}
+
+// On main thread - UI remains responsive
+lifecycleScope.launch {
+    suspendingDownload()  // ✅ No ANR
+}
+```
+
+**Key Differences:**
+
+| Feature | Blocking | Suspend |
+|---------|----------|---------|
+| Thread | Blocked | Free to do other work |
+| Context | Any | Must be in coroutine |
+| Performance | Expensive (thread waiting) | Efficient (thread reused) |
+| UI Impact | Freezes UI | UI remains responsive |
+| Cancellation | Hard to cancel | Easy to cancel |
+
+**Practical Example:**
+
+```kotlin
+// Blocking approach - BAD
+fun loadUserBlocking(): User {
+    val user = networkService.getUser()  // Blocks thread
+    val posts = networkService.getPosts()  // Blocks thread
+    return user
+}
+
+// Suspending approach - GOOD
+suspend fun loadUserSuspending(): User = withContext(Dispatchers.IO) {
+    val user = networkService.getUser()  // Suspends, doesn't block
+    val posts = networkService.getPosts()  // Suspends, doesn't block
+    user
+}
+
+// Parallel execution with suspend
+suspend fun loadDataParallel() = coroutineScope {
+    val userDeferred = async { getUser() }      // Start immediately
+    val postsDeferred = async { getPosts() }    // Start immediately
+    UserData(
+        user = userDeferred.await(),            // Wait for both
+        posts = postsDeferred.await()
+    )
+}
+```
+
+**When to use each:**
+- **Blocking**: Never in production Android code (except legacy Java interop)
+- **Suspend**: Always for async operations in Kotlin
+
+---
+
+### 6. What is the difference between Flow and LiveData?
+
+**Answer:**
+
+| Feature | Flow | LiveData |
+|---------|------|----------|
+| Platform | Kotlin only | Android only |
+| Lifecycle-aware | No (needs lifecycleScope) | Yes (built-in) |
+| Cold/Hot | Cold (default) | Hot |
+| Operators | Extensive (map, filter, etc.) | Limited |
+| Thread safety | Yes | Yes |
+| Backpressure | Yes (buffer, conflate) | No |
+| Initial value | No | Optional |
+
+**Flow:**
+```kotlin
+// Cold stream - emits only when collected
+fun getUpdates(): Flow<Data> = flow {
+    while (true) {
+        emit(fetchData())
+        delay(1000)
+    }
+}
+
+// Usage in ViewModel
+class MyViewModel : ViewModel() {
+    val dataFlow: Flow<Data> = repository.getUpdates()
+        .map { transform(it) }
+        .filter { it.isValid }
+        .flowOn(Dispatchers.IO)
+}
+
+// Collection in Fragment/Activity
+lifecycleScope.launch {
+    viewModel.dataFlow.collect { data ->
+        updateUI(data)
+    }
+}
+
+// StateFlow - hot, stateful
+private val _uiState = MutableStateFlow(UiState.Loading)
+val uiState: StateFlow<UiState> = _uiState.asStateFlow()
+```
+
+**LiveData:**
+```kotlin
+// Hot stream - always active
+class MyViewModel : ViewModel() {
+    private val _data = MutableLiveData<Data>()
+    val data: LiveData<Data> = _data
+    
+    fun loadData() {
+        viewModelScope.launch {
+            _data.value = repository.getData()
+        }
+    }
+}
+
+// Observation (lifecycle-aware automatically)
+viewModel.data.observe(viewLifecycleOwner) { data ->
+    updateUI(data)
+}
+```
+
+**When to use:**
+- **Flow**: New Kotlin projects, complex transformations, backpressure needed
+- **LiveData**: Existing projects, simple UI updates, tight Android integration
+- **StateFlow**: Replacement for LiveData in new code
+
+**Migration pattern:**
+```kotlin
+// Convert Flow to LiveData
+val liveData: LiveData<Data> = flow.asLiveData()
+
+// Convert LiveData to Flow
+val flow: Flow<Data> = liveData.asFlow()
+```
+
+---
+
+### 7. Explain operator overloading - when should you use it?
+
+**Answer:**
+
+Operator overloading allows custom behavior for standard operators.
+
+**Example: Vector Class**
+
+```kotlin
+data class Vector2D(val x: Double, val y: Double) {
+    // Arithmetic operators
+    operator fun plus(other: Vector2D) = 
+        Vector2D(x + other.x, y + other.y)
+    
+    operator fun minus(other: Vector2D) = 
+        Vector2D(x - other.x, y - other.y)
+    
+    operator fun times(scalar: Double) = 
+        Vector2D(x * scalar, y * scalar)
+    
+    operator fun div(scalar: Double) = 
+        Vector2D(x / scalar, y / scalar)
+    
+    // Unary operators
+    operator fun unaryMinus() = Vector2D(-x, -y)
+    
+    operator fun inc() = Vector2D(x + 1, y + 1)
+    
+    // Comparison
+    operator fun compareTo(other: Vector2D): Int {
+        val thisMag = Math.sqrt(x * x + y * y)
+        val otherMag = Math.sqrt(other.x * other.x + other.y * other.y)
+        return thisMag.compareTo(otherMag)
+    }
+    
+    // Index access
+    operator fun get(index: Int) = when (index) {
+        0 -> x
+        1 -> y
+        else -> throw IndexOutOfBoundsException()
+    }
+}
+
+// Usage - looks like mathematical notation
+val v1 = Vector2D(3.0, 4.0)
+val v2 = Vector2D(1.0, 2.0)
+
+val sum = v1 + v2          // Vector2D(4.0, 6.0)
+val diff = v1 - v2         // Vector2D(2.0, 2.0)
+val scaled = v1 * 2.0      // Vector2D(6.0, 8.0)
+val negated = -v1          // Vector2D(-3.0, -4.0)
+println(v1 > v2)           // true (magnitude comparison)
+println(v1[0])             // 3.0
+```
+
+**Money class example:**
+
+```kotlin
+data class Money(val amount: BigDecimal, val currency: String) {
+    operator fun plus(other: Money): Money {
+        require(currency == other.currency) { "Currency mismatch" }
+        return Money(amount + other.amount, currency)
+    }
+    
+    operator fun times(factor: Int): Money {
+        return Money(amount * BigDecimal(factor), currency)
+    }
+    
+    operator fun compareTo(other: Money): Int {
+        require(currency == other.currency) { "Currency mismatch" }
+        return amount.compareTo(other.amount)
+    }
+}
+
+val price = Money(BigDecimal("19.99"), "USD")
+val total = price * 3  // $59.97
+```
+
+**When to use operator overloading:**
+
+✅ **Good use cases:**
+- Mathematical types (Vector, Matrix, Complex numbers)
+- Collection-like types (custom lists, maps)
+- Domain types with natural operators (Money, Date ranges)
+- DSLs where operators enhance readability
+
+❌ **Bad use cases:**
+- Operators with non-obvious meaning
+- Side effects in operators
+- Violating principle of least surprise
+
+**Guidelines:**
+- Keep operators intuitive
+- Maintain mathematical properties (commutativity, associativity where expected)
+- Don't overuse - prefer named methods for complex operations
+
+---
+
+### 8. How do sealed classes help with state machines?
+
+**Answer:**
+
+Sealed classes provide exhaustive when expressions and type-safe state representation.
+
+**Example: Network Request State Machine**
+
+```kotlin
+sealed class NetworkState {
+    object Idle : NetworkState()
+    object Loading : NetworkState()
+    data class Success(val data: String) : NetworkState()
+    data class Error(val exception: Exception) : NetworkState()
+}
+
+class NetworkManager {
+    private val _state = MutableStateFlow<NetworkState>(NetworkState.Idle)
+    val state: StateFlow<NetworkState> = _state.asStateFlow()
+    
+    suspend fun fetchData() {
+        _state.value = NetworkState.Loading
+        try {
+            val data = api.getData()
+            _state.value = NetworkState.Success(data)
+        } catch (e: Exception) {
+            _state.value = NetworkState.Error(e)
+        }
+    }
+}
+
+// UI handles all cases exhaustively
+fun renderState(state: NetworkState) = when (state) {
+    NetworkState.Idle -> showIdleUI()
+    NetworkState.Loading -> showLoading()
+    is NetworkState.Success -> showData(state.data)
+    is NetworkState.Error -> showError(state.exception.message)
+    // No else needed - compiler ensures all cases handled
+}
+```
+
+**Example: Authentication State Machine**
+
+```kotlin
+sealed class AuthState {
+    object Unauthenticated : AuthState()
+    data class Authenticating(val username: String) : AuthState()
+    data class Authenticated(val user: User, val token: String) : AuthState()
+    data class Failed(val reason: String) : AuthState()
+    
+    // State transitions
+    fun canTransitionTo(newState: AuthState): Boolean = when (this) {
+        is Unauthenticated -> newState is Authenticating
+        is Authenticating -> newState is Authenticated || newState is Failed
+        is Authenticated -> newState is Unauthenticated
+        is Failed -> newState is Authenticating || newState is Unauthenticated
+    }
+}
+
+class AuthStateMachine {
+    private var currentState: AuthState = AuthState.Unauthenticated
+    
+    fun transitionTo(newState: AuthState) {
+        require(currentState.canTransitionTo(newState)) {
+            "Invalid transition from $currentState to $newState"
+        }
+        currentState = newState
+    }
+}
+```
+
+**Benefits:**
+1. **Exhaustive checking** - compiler ensures all cases handled
+2. **Type safety** - each state has its own data
+3. **No invalid states** - only defined states possible
+4. **Clear transitions** - state changes are explicit
+5. **Easy to extend** - add new states without breaking existing code
+
+---
+
+### 9. Explain the difference between object and class with singleton pattern
+
+**Answer:**
+
+**Using object (Kotlin):**
+
+```kotlin
+// Thread-safe, lazy initialization by default
+object DatabaseManager {
+    private var connection: Connection? = null
+    
+    fun connect() {
+        if (connection == null) {
+            connection = createConnection()
+        }
+    }
+    
+    fun query(sql: String): Result {
+        return connection!!.execute(sql)
+    }
+}
+
+// Usage - no instantiation needed
+DatabaseManager.connect()
+val result = DatabaseManager.query("SELECT * FROM users")
+
+// Compiled to:
+// public final class DatabaseManager {
+//     public static final DatabaseManager INSTANCE;
+//     static { INSTANCE = new DatabaseManager(); }
+//     private DatabaseManager() {}
+// }
+```
+
+**Using class (manual singleton):**
+
+```kotlin
+// Not thread-safe
+class DatabaseManager private constructor() {
+    companion object {
+        private var instance: DatabaseManager? = null
+        
+        fun getInstance(): DatabaseManager {
+            if (instance == null) {
+                instance = DatabaseManager()
+            }
+            return instance!!
+        }
+    }
+}
+
+// Thread-safe (double-checked locking)
+class DatabaseManager private constructor() {
+    companion object {
+        @Volatile
+        private var instance: DatabaseManager? = null
+        
+        fun getInstance(): DatabaseManager {
+            return instance ?: synchronized(this) {
+                instance ?: DatabaseManager().also { instance = it }
+            }
+        }
+    }
+}
+
+// Thread-safe (lazy delegate)
+class DatabaseManager private constructor() {
+    companion object {
+        val instance: DatabaseManager by lazy {
+            DatabaseManager()
+        }
+    }
+}
+```
+
+**Comparison:**
+
+| Feature | object | class singleton |
+|---------|--------|-----------------|
+| Thread safety | Automatic | Manual |
+| Initialization | Lazy (on first access) | Depends on implementation |
+| Boilerplate | None | Significant |
+| Parameters | Cannot pass | Can pass to constructor |
+| Testing | Hard to mock | Can inject dependency |
+
+**When to use each:**
+
+**Use `object`:**
+```kotlin
+// Simple singleton without dependencies
+object Logger {
+    fun log(message: String) {
+        println("[LOG] $message")
+    }
+}
+```
+
+**Use `class` singleton:**
+```kotlin
+// When you need dependency injection
+class Repository private constructor(
+    private val database: Database
+) {
+    companion object {
+        @Volatile
+        private var instance: Repository? = null
+        
+        fun getInstance(database: Database): Repository {
+            return instance ?: synchronized(this) {
+                instance ?: Repository(database).also { instance = it }
+            }
+        }
+    }
+}
+
+// Better: Use dependency injection framework
+class Repository(private val database: Database) {
+    // Dagger/Hilt manages singleton
+}
+```
+
+---
+
+### 10. What are property delegates? Implement a custom delegate
+
+**Answer:**
+
+Property delegates allow reusing property behavior across classes.
+
+**Custom Delegate Examples:**
+
+**1. Logging Delegate:**
+
+```kotlin
+class LoggingDelegate<T>(private var value: T) {
+    operator fun getValue(thisRef: Any?, property: KProperty<*>): T {
+        println("[GET] ${property.name} = $value")
+        return value
+    }
+    
+    operator fun setValue(thisRef: Any?, property: KProperty<*>, newValue: T) {
+        println("[SET] ${property.name}: $value -> $newValue")
+        value = newValue
+    }
+}
+
+class User {
+    var name: String by LoggingDelegate("Unknown")
+    var age: Int by LoggingDelegate(0)
+}
+
+val user = User()
+user.name = "John"  // [SET] name: Unknown -> John
+println(user.name)   // [GET] name = John
+```
+
+**2. Validation Delegate:**
+
+```kotlin
+class ValidatedDelegate<T>(
+    private var value: T,
+    private val validator: (T) -> Boolean
+) {
+    operator fun getValue(thisRef: Any?, property: KProperty<*>): T {
+        return value
+    }
+    
+    operator fun setValue(thisRef: Any?, property: KProperty<*>, newValue: T) {
+        require(validator(newValue)) {
+            "${property.name} validation failed for value: $newValue"
+        }
+        value = newValue
+    }
+}
+
+class Person {
+    var age: Int by ValidatedDelegate(0) { it >= 0 && it <= 150 }
+    var email: String by ValidatedDelegate("") { it.contains("@") }
+}
+
+val person = Person()
+person.age = 25      // ✅ OK
+// person.age = -5   // ❌ IllegalArgumentException
+person.email = "john@example.com"  // ✅ OK
+// person.email = "invalid"        // ❌ IllegalArgumentException
+```
+
+**3. Cached/Memoized Delegate:**
+
+```kotlin
+class CachedDelegate<T>(
+    private val loader: () -> T,
+    private val expirationMs: Long = 60000
+) {
+    private var value: T? = null
+    private var lastLoadTime: Long = 0
+    
+    operator fun getValue(thisRef: Any?, property: KProperty<*>): T {
+        val now = System.currentTimeMillis()
+        if (value == null || (now - lastLoadTime) > expirationMs) {
+            value = loader()
+            lastLoadTime = now
+            println("Cache refreshed for ${property.name}")
+        }
+        return value!!
+    }
+}
+
+// Read-only property delegate
+operator fun <T> CachedDelegate<T>.provideDelegate(
+    thisRef: Any?,
+    prop: KProperty<*>
+): CachedDelegate<T> {
+    return this
+}
+
+class DataRepository {
+    val users: List<User> by CachedDelegate({ fetchUsersFromNetwork() }, 5000)
+    val settings: Settings by CachedDelegate({ fetchSettings() })
+}
+```
+
+**4. Thread-Safe Delegate:**
+
+```kotlin
+class SynchronizedDelegate<T>(initialValue: T) {
+    private var value: T = initialValue
+    private val lock = Any()
+    
+    operator fun getValue(thisRef: Any?, property: KProperty<*>): T {
+        synchronized(lock) {
+            return value
+        }
+    }
+    
+    operator fun setValue(thisRef: Any?, property: KProperty<*>, newValue: T) {
+        synchronized(lock) {
+            value = newValue
+        }
+    }
+}
+
+class SharedResource {
+    var counter: Int by SynchronizedDelegate(0)
+}
+```
+
+**5. Bound Delegate (limits value range):**
+
+```kotlin
+class BoundDelegate(
+    initialValue: Int,
+    private val min: Int,
+    private val max: Int
+) {
+    private var value: Int = initialValue.coerceIn(min, max)
+    
+    operator fun getValue(thisRef: Any?, property: KProperty<*>): Int {
+        return value
+    }
+    
+    operator fun setValue(thisRef: Any?, property: KProperty<*>, newValue: Int) {
+        value = newValue.coerceIn(min, max)
+    }
+}
+
+class Volume {
+    var level: Int by BoundDelegate(50, 0, 100)
+}
+
+val volume = Volume()
+volume.level = 150  // Clamped to 100
+println(volume.level)  // 100
+```
+
+**provideDelegate for initialization:**
+
+```kotlin
+class ResourceDelegate<T>(
+    private val resourceName: String,
+    private val loader: (String) -> T
+) {
+    private var value: T? = null
+    
+    operator fun provideDelegate(
+        thisRef: Any?,
+        prop: KProperty<*>
+    ): ResourceDelegate<T> {
+        // Validate at property declaration time
+        println("Initializing ${prop.name} with resource $resourceName")
+        return this
+    }
+    
+    operator fun getValue(thisRef: Any?, property: KProperty<*>): T {
+        if (value == null) {
+            value = loader(resourceName)
+        }
+        return value!!
+    }
+}
+
+class MyClass {
+    val image: Bitmap by ResourceDelegate("logo.png") { name ->
+        loadBitmap(name)
+    }
+}
+```
+
+---
+
+
