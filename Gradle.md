@@ -2,6 +2,11 @@
 
 > Comprehensive guide to Gradle build system for Android development. Covers basics, configurations, build variants, multi-module projects, and optimization techniques.
 
+> 📚 **Recommended Reading Alernative to this:**  
+> [Understanding Gradle in Android – The Complete Roadmap for Developers](https://proandroiddev.com/understanding-gradle-in-android-the-complete-roadmap-for-developers-17e5d09040f6)  
+> *(A concise and practical guide to mastering Gradle)*
+
+
 ## Table of Contents
 
 1. [What is Gradle?](#1-what-is-gradle)

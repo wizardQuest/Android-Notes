@@ -286,6 +286,18 @@ list.fold(0) { acc, i -> acc + i }  // 6
 ### Generics Basics
 
 ```kotlin
+
+/** 
+
+https://typealias.com/start/kotlin-variance/
+
+RULES OF SUBTYPE: So what makes a subtype a subtype? The ability to substitute it for one of its supertypes. A subtype must fully support the contract of its supertype. Specifically, this means it must obey the following three rules:1
+
+1. The subtype must have all of the same public properties and functions as its supertype.
+2. Function parameter types must be the SAME AS or MORE general than, those in the supertype. (This is the rule of contravariance.)
+3. Its function return types MUST be the SAME AS or MORE specific than, those in its supertype.
+*/
+
 // Generic class
 class Box<T>(val value: T)
 val intBox = Box<Int>(42)
@@ -297,12 +309,12 @@ fun <T> singletonList(item: T): List<T> {
 }
 
 // Variance
-// out - covariant (producer)
+// out - covariant (producer) . Think of it as, this type can be only used for returning. This ensures Rule #2
 interface Producer<out T> {
     fun produce(): T
 }
 
-// in - contravariant (consumer)
+// in - contravariant (consumer). Think of it as, this type can be only used for parameter input. This ensures Rule #3
 interface Consumer<in T> {
     fun consume(item: T)
 }
@@ -311,6 +323,12 @@ interface Consumer<in T> {
 fun <T> process(item: T) where T : Comparable<T>, T : Cloneable {
     // T must implement both Comparable and Cloneable
 }
+
+/** IN SUMMARY:
+
+1. The out modifier can be used to ensure that the type parameter will only appear publicly in an out-position, which makes it safe for covariance.
+2. Conversely, the in modifier can be used to ensure that it will only appear publicly in an in-position, so that it’s safe for contravariance.
+*/
 ```
 
 ---
