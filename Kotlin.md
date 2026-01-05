@@ -324,6 +324,40 @@ fun <T> process(item: T) where T : Comparable<T>, T : Cloneable {
     // T must implement both Comparable and Cloneable
 }
 
+// Reified Type Parameters Example
+
+/**
+ * In Kotlin, generic type parameters are erased at runtime (type erasure), so you can't use
+ * `is`, `as`, or access the class of a generic type directly. Marking a generic parameter as `reified`
+ * in an `inline` function allows you to access the actual type at runtime.
+ */
+
+inline fun <reified T> isOfType(value: Any): Boolean {
+    return value is T
+}
+
+inline fun <reified T> List<*>.filterOfType(): List<T> {
+    return this.filterIsInstance<T>()
+}
+
+// Example Usages:
+val items: List<Any> = listOf("Kotlin", 42, "Java", 17.5)
+
+// Filtering only String values from the list
+val strings: List<String> = items.filterOfType<String>()    // ["Kotlin", "Java"]
+
+// Runtime type check using reified generic
+val isString = isOfType<String>("hello")    // true
+val isInt = isOfType<Int>("hello")          // false
+
+/**
+ * Explanation:
+ * - `inline` with `reified` allows the compiler to keep the actual type argument at runtime (no type erasure).
+ * - You can use type checks (`is T`, `as T`), get class references (`T::class`), etc. inside reified functions.
+ * - `inline fun <reified T>` can only be used with inline functions.
+ */
+
+
 /** IN SUMMARY:
 
 1. The out modifier can be used to ensure that the type parameter will only appear publicly in an out-position, which makes it safe for covariance.
